@@ -1,9 +1,11 @@
+#include <limits.h>
+
 namespace ookey
 {
 namespace rx
 {
 
-const int timeSamplesCount = 15;
+const int timeSamplesCount = 8;
 
 class Decoder
 {
@@ -31,6 +33,13 @@ class Decoder
   virtual void setTimer(int time) = 0;
   virtual void enableRfPinInterrupt(bool enabled) = 0;
 
+  void mark() {
+      target::GPIOA.ODR.setODR(1, 1);
+      for (volatile int c = 0; c < 50; c++)
+        ;
+      target::GPIOA.ODR.setODR(1, 0);   
+  }
+
 public:
   void init()
   {
@@ -47,11 +56,6 @@ public:
     }
     else
     {
-
-      target::GPIOA.ODR.setODR(1, 1);
-      for (volatile int c = 0; c < 50; c++)
-        ;
-      target::GPIOA.ODR.setODR(1, 0);
 
       volatile int byteIdx = bitCounter >> 3;
       volatile int bitIdx = bitCounter & 0x07;
@@ -71,40 +75,63 @@ public:
     bitCounter++;
   }
 
+  // int getAvgTime(int offset) {
+  //   int sum = 0;
+  //   for (int c = 0; c < 4; c++) {
+  //     sum += timeSamples[(timeSampleIdx - c - offset) & (timeSamplesCount - 1)];
+  //   }
+  //   return sum >> 2;
+  // }
+
+  void getTimes(int offset, int& min, int& max) {
+    for (int c = 0; c < 4; c++) {
+      int t = timeSamples[(timeSampleIdx - c - offset) & (timeSamplesCount - 1)];
+      if (t > max) {
+        max = t;
+      }
+      if (t < min) {
+        min = t;
+      }
+    }
+  }
+
   void handleRfPinInterrupt(int time)
   {
-    timeSamples[timeSampleIdx++] = time;
+    timeSamples[timeSampleIdx] = time;
 
-    if (timeSampleIdx == timeSamplesCount)
-    {
-      timeSampleIdx = 0;
+    // volatile int avgFast = getAvgTime(-4);
+    // volatile int avgSlow = getAvgTime(0);
+
+    // // preamble pattern:
+    // // are last 4 pulses approximately two times wider than previous 4 pulses?
+    // volatile int avgFastByTwo = avgFast << 1;
+    // volatile int diff = avgFastByTwo - avgSlow;
+    // if (diff < 0) {
+    //   diff = -diff;
+    // }
+
+    // if (diff < avgFast >> 2) {
+    //   mark();
+    //   diff++;
+    // }
+
+    int fastMin = INT_MAX;
+    int fastMax = INT_MIN;
+    int slowMin = INT_MAX;
+    int slowMax = INT_MIN;
+    getTimes(-4, fastMin, fastMax);
+    getTimes(0, slowMin, slowMax);
+
+    if (
+      fastMax * 5 < slowMin * 4 &&
+      fastMin * 5 > slowMax * 2
+    ) {
+      mark();
     }
 
-    int sum = 0;
-    for (int c = 0; c < timeSamplesCount; c++)
-    {
-      sum += timeSamples[c];
-    }
-    int avg = sum / timeSamplesCount;
-    int maxDev = 0;
-    for (int c = 0; c < timeSamplesCount; c++)
-    {
-      int dev = timeSamples[c] - avg;
-      if (dev < 0)
-      {
-        dev = -dev;
-      }
-      if (dev > maxDev)
-      {
-        maxDev = dev;
-      }
-    }
+    volatile int x  = fastMin + fastMax + slowMin + slowMax;
+    timeSampleIdx = (timeSampleIdx + 1) & (timeSamplesCount - 1);
 
-    if (maxDev < avg / 16)
-    {
-      bitTime = avg;
-      receive();
-    }
   }
 };
 

@@ -7,11 +7,11 @@
     "@device.farm/si-stm32f0x0": "^1.0.0"
   },
   "silicon": {
-    "sources": [
+    "Xsources": [
       "ookey-tx.cpp",
       "ots1a.cpp"
     ],
-    "Xsources": [
+    "sources": [
       "ookey-rx.cpp",
       "rx-test.cpp"
     ],

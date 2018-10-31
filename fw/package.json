@@ -1,0 +1,20 @@
+{
+  "name": "hw-ots1a",
+  "version": "1.0.0",
+  "description": "OOK ISM Temperature sensor",
+  "dependencies": {
+    "@device.farm/si-stm32-timer": "^1.0.6",
+    "@device.farm/si-stm32f0x0": "^1.0.0"
+  },
+  "silicon": {
+    "sources": [
+      "ookey-tx.cpp",
+      "ots1a.cpp"
+    ],
+    "symbols": {
+      "ROM_START": "0x08000000",
+      "RAM_START": "0x20000000",
+      "RAM_SIZE": "6144"
+    }
+  }
+}

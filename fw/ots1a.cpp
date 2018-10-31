@@ -1,5 +1,5 @@
-target::gpio_b_f::Peripheral *LED_PORT = &target::GPIOB;
-int LED_PIN = 7;
+target::gpio_a::Peripheral *LED_PORT = &target::GPIOA;
+int LED_PIN = 1;
 
 target::gpio_a::Peripheral *RF_PORT = &target::GPIOA;
 int RF_PIN = 0;
@@ -34,8 +34,8 @@ class TxTimer : public genericTimer::Timer
         LED_PORT->BSRR = 1 << LED_PIN;
         if (!txDriver.busy())
         {
-            //txDriver.send((unsigned char *)"I'm OOK!", 8);
-            txDriver.send(NULL, 0);
+            txDriver.send((unsigned char *)"I'm OOK!", 8);
+            //txDriver.send(NULL, 0);
         }
         ledOffTimer.start(10);
         start(100);

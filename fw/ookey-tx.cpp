@@ -3,7 +3,8 @@ namespace ookey
 namespace tx
 {
 
-const unsigned char PREAMBLE[2] = {0xFF, 0xFF};
+// 16 sync manchaster pulses
+const unsigned char PREAMBLE[2] = {0xFF, 0xFF}; 
 
 class Driver
 {
@@ -33,10 +34,16 @@ class Driver
         {
             buffer[i++] = PREAMBLE[c];
         }
+        buffer[i++] = len;
+        int crc = 0x55;
         for (int c = 0; c < len; c++)
         {
             buffer[i++] = data[c];
+            crc += data[c];
         }
+        buffer[i++] = crc & 0xFF;
+        buffer[i++] = (crc >> 8) & 0xFF;
+        
 
         size = i;
         counter = 0;
@@ -45,11 +52,11 @@ class Driver
 
     void tick()
     {
-        int bitCnt = (counter >> 1) & 0x07;
-        int byteCnt = (counter >> 4);
-        if (byteCnt < size)
+        int byteIdx = (counter >> 4);
+        if (byteIdx < size)
         {
-            setRfPin((counter & 1) & ((buffer[byteCnt] >> bitCnt) & 1));
+            int bitIdx = (counter >> 1) & 0x07;
+            setRfPin(((buffer[byteIdx] >> bitIdx) ^ counter) & 1);
 
             counter++;
         }
@@ -59,8 +66,7 @@ class Driver
             timerEnable(false);
         }
     }
-
-}; // namespace tx
+};
 
 } // namespace tx
 } // namespace ookey

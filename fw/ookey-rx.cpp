@@ -84,7 +84,7 @@ public:
   // }
 
   void getTimes(int offset, int& min, int& max) {
-    for (int c = 0; c < 4; c++) {
+    for (int c = 0; c < timeSamplesCount >> 1; c++) {
       int t = timeSamples[(timeSampleIdx - c - offset) & (timeSamplesCount - 1)];
       if (t > max) {
         max = t;
@@ -119,13 +119,14 @@ public:
     int fastMax = INT_MIN;
     int slowMin = INT_MAX;
     int slowMax = INT_MIN;
-    getTimes(-4, fastMin, fastMax);
+    getTimes(-timeSamplesCount >> 1, fastMin, fastMax);
     getTimes(0, slowMin, slowMax);
 
     if (
       fastMax * 5 < slowMin * 4 &&
       fastMin * 5 > slowMax * 2
     ) {
+      bitTime = (fastMin + fastMax) >> 2;
       mark();
     }
 

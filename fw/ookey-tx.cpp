@@ -4,7 +4,7 @@ namespace tx
 {
 
 // 16 sync manchaster pulses
-const unsigned char PREAMBLE[2] = {0xFF, 0xAA}; 
+const unsigned char PREAMBLE[4] = {0xFF, 0xFF, 0xFF, 0xAA}; 
 
 class Driver
 {

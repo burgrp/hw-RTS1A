@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "OOK ISM Temperature sensor",
   "dependencies": {
+    "@device.farm/si-application-events": "^1.0.0",
     "@device.farm/si-stm32-timer": "^1.0.6",
     "@device.farm/si-stm32f0x0": "^1.0.0"
   },

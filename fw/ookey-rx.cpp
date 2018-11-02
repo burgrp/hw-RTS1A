@@ -7,44 +7,47 @@ namespace rx
 
 const int timeSamplesCount = 8;
 
-class Decoder
+class Decoder : public applicationEvents::EventHandler
 {
 
-  unsigned char buffer[256];
+  unsigned char buffer[1 + 256 + 4];
   int bitTime;
   int bitCounter;
+  int rxEventId;
 
   unsigned short timeSamples[timeSamplesCount];
   int timeSampleIdx = 0;
 
-  void listen()
+  virtual void setTimerInterrupt(int time) = 0;
+  virtual void setRfPinInterrupt(bool enabled) = 0;
+  virtual void dataReceived(unsigned char *data, int len) = 0;
+
+  void mark()
   {
-    setTimer(0);
-    enableRfPinInterrupt(true);
+    target::GPIOA.ODR.setODR(1, 1);
+    for (volatile int c = 0; c < 50; c++)
+      ;
+    target::GPIOA.ODR.setODR(1, 0);
   }
 
-  void receive()
+  void onEvent()
   {
-    bitCounter = -1;
-    enableRfPinInterrupt(false);
-    setTimer(bitTime / 8);
-  }
-
-  virtual void setTimer(int time) = 0;
-  virtual void enableRfPinInterrupt(bool enabled) = 0;
-
-  void mark() {
-      target::GPIOA.ODR.setODR(1, 1);
-      for (volatile int c = 0; c < 50; c++)
-        ;
-      target::GPIOA.ODR.setODR(1, 0);   
+    mark();
+    dataReceived(&buffer[1], buffer[0]);
   }
 
 public:
   void init()
   {
-    listen();
     target::GPIOA.MODER.setMODER(1, 1);
+    rxEventId = applicationEvents::createEventId();
+    handle(rxEventId);
+  }
+
+  void listen()
+  {
+    setTimerInterrupt(0);
+    setRfPinInterrupt(true);
   }
 
   void handleTimerInterrupt(bool val)
@@ -52,44 +55,56 @@ public:
 
     if (bitCounter < 0)
     {
-      setTimer(bitTime);
+      setTimerInterrupt(bitTime);
+      bitCounter++;
     }
     else
     {
+      mark();
 
       volatile int byteIdx = bitCounter >> 3;
       volatile int bitIdx = bitCounter & 0x07;
-      if (bitIdx == 0)
+
+      if (byteIdx > 0 && byteIdx == buffer[0] + 4)
       {
-        buffer[byteIdx] = 0;
+        int calculatedCrc = 0x55;
+        int len = buffer[0];
+        for (int c = 0; c < len; c++)
+        {
+          calculatedCrc += buffer[c + 1];
+        }
+        int bufferCrc = buffer[1 + len] | buffer[1 + len + 1] << 8;
+        if (bufferCrc == calculatedCrc)
+        {
+          applicationEvents::schedule(rxEventId);
+          setTimerInterrupt(0);
+        } else {
+          listen();
+        }
       }
-      buffer[byteIdx] |= val << bitIdx;
-      if (byteIdx == 10)
+      else
       {
-        volatile int x = 1;
-        x++;
-        listen();
+        if (bitIdx == 0)
+        {
+          buffer[byteIdx] = 0;
+        }
+        buffer[byteIdx] |= val << bitIdx;
+        bitCounter++;
       }
     }
-
-    bitCounter++;
   }
 
-  // int getAvgTime(int offset) {
-  //   int sum = 0;
-  //   for (int c = 0; c < 4; c++) {
-  //     sum += timeSamples[(timeSampleIdx - c - offset) & (timeSamplesCount - 1)];
-  //   }
-  //   return sum >> 2;
-  // }
-
-  void getTimes(int offset, int& min, int& max) {
-    for (int c = 0; c < timeSamplesCount >> 1; c++) {
+  void getTimes(int offset, int &min, int &max)
+  {
+    for (int c = 0; c<timeSamplesCount>> 1; c++)
+    {
       int t = timeSamples[(timeSampleIdx - c - offset) & (timeSamplesCount - 1)];
-      if (t > max) {
+      if (t > max)
+      {
         max = t;
       }
-      if (t < min) {
+      if (t < min)
+      {
         min = t;
       }
     }
@@ -99,22 +114,6 @@ public:
   {
     timeSamples[timeSampleIdx] = time;
 
-    // volatile int avgFast = getAvgTime(-4);
-    // volatile int avgSlow = getAvgTime(0);
-
-    // // preamble pattern:
-    // // are last 4 pulses approximately two times wider than previous 4 pulses?
-    // volatile int avgFastByTwo = avgFast << 1;
-    // volatile int diff = avgFastByTwo - avgSlow;
-    // if (diff < 0) {
-    //   diff = -diff;
-    // }
-
-    // if (diff < avgFast >> 2) {
-    //   mark();
-    //   diff++;
-    // }
-
     int fastMin = INT_MAX;
     int fastMax = INT_MIN;
     int slowMin = INT_MAX;
@@ -123,16 +122,17 @@ public:
     getTimes(0, slowMin, slowMax);
 
     if (
-      fastMax * 5 < slowMin * 4 &&
-      fastMin * 5 > slowMax * 2
-    ) {
-      bitTime = (fastMin + fastMax) >> 2;
-      mark();
+        fastMax * 5 < slowMin * 4 &&
+        fastMin * 5 > slowMax * 2)
+    {
+      bitTime = fastMin + fastMax >> 1;
+      bitCounter = -1;
+      setRfPinInterrupt(false);
+      setTimerInterrupt(5 * bitTime >> 3);
     }
 
-    volatile int x  = fastMin + fastMax + slowMin + slowMax;
+    volatile int x = fastMin + fastMax + slowMin + slowMax;
     timeSampleIdx = (timeSampleIdx + 1) & (timeSamplesCount - 1);
-
   }
 };
 

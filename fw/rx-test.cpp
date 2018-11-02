@@ -7,7 +7,7 @@ int RF_PIN = 0;
 class RxDecoder : public ookey::rx::Decoder
 {
 
-    virtual void setTimer(int time)
+    virtual void setTimerInterrupt(int time)
     {
         target::TIM16.DIER.setUIE(0);
         target::TIM16.CNT.setCNT(0);
@@ -16,9 +16,14 @@ class RxDecoder : public ookey::rx::Decoder
         target::TIM16.DIER.setUIE(time > 0);
     }
 
-    virtual void enableRfPinInterrupt(bool enabled)
+    virtual void setRfPinInterrupt(bool enabled)
     {
         target::EXTI.IMR.setMR(RF_PIN, enabled);
+    }
+
+    virtual void dataReceived(unsigned char* data, int len) {
+        LED_PORT->ODR.setODR(LED_PIN, !LED_PORT->IDR.getIDR(LED_PIN));
+        listen();
     }
 };
 
@@ -26,13 +31,9 @@ RxDecoder rxDecoder;
 
 void interruptHandlerTIM16()
 {
-    target::TIM16.SR.setUIF(0);
     rxDecoder.handleTimerInterrupt(RF_PORT->IDR.getIDR(RF_PIN));
+    target::TIM16.SR.setUIF(0);
 }
-
-//LED_PORT->ODR.setODR(LED_PIN, !LED_PORT->IDR.getIDR(LED_PIN));
-
-//
 
 void interruptHandlerEXTI0_1()
 {
@@ -66,4 +67,5 @@ void initApplication()
     target::NVIC.ISER.setSETENA(1 << target::interrupts::External::EXTI0_1);
 
     rxDecoder.init();
+    rxDecoder.listen();
 }

@@ -63,33 +63,37 @@ public:
       mark();
 
       volatile int byteIdx = bitCounter >> 3;
-      volatile int bitIdx = bitCounter & 0x07;
+      volatile int bitIdx = bitCounter & 0x07;      
 
-      if (byteIdx > 0 && byteIdx == buffer[0] + 4)
-      {
-        int calculatedCrc = 0x55;
-        int len = buffer[0];
-        for (int c = 0; c < len; c++)
+      if ((byteIdx == 1 && buffer[0] != 0xDF) || (byteIdx == 2 && buffer[1] != 0x00)) {
+        listen();
+      } else {
+        if (byteIdx > 2 && byteIdx == 2 + buffer[2] + 4)
         {
-          calculatedCrc += buffer[c + 1];
+          int calculatedCrc = 0x55;
+          int len = buffer[2];
+          for (int c = 0; c < len; c++)
+          {
+            calculatedCrc += buffer[c + 2 + 1];
+          }
+          int bufferCrc = buffer[2 + 1 + len] | buffer[2 + 1 + len + 1] << 8;
+          if (bufferCrc == calculatedCrc)
+          {
+            applicationEvents::schedule(rxEventId);
+            setTimerInterrupt(0);
+          } else {
+            listen();
+          }
         }
-        int bufferCrc = buffer[1 + len] | buffer[1 + len + 1] << 8;
-        if (bufferCrc == calculatedCrc)
+        else
         {
-          applicationEvents::schedule(rxEventId);
-          setTimerInterrupt(0);
-        } else {
-          listen();
+          if (bitIdx == 0)
+          {
+            buffer[byteIdx] = 0;
+          }
+          buffer[byteIdx] |= val << bitIdx;
+          bitCounter++;
         }
-      }
-      else
-      {
-        if (bitIdx == 0)
-        {
-          buffer[byteIdx] = 0;
-        }
-        buffer[byteIdx] |= val << bitIdx;
-        bitCounter++;
       }
     }
   }

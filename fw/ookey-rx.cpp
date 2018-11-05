@@ -1,41 +1,53 @@
+#include <limits.h>
+
 namespace ookey
 {
 namespace rx
 {
 
-const int timeSamplesCount = 15;
+const int timeSamplesCount = 8;
 
-class Decoder
+class Decoder : public applicationEvents::EventHandler
 {
-
-  unsigned char buffer[256];
+  unsigned short address;
+  unsigned char buffer[2 + 1 + 256 + 4];
   int bitTime;
   int bitCounter;
+  int rxEventId;
 
   unsigned short timeSamples[timeSamplesCount];
   int timeSampleIdx = 0;
 
-  void listen()
+  virtual void setTimerInterrupt(int time) = 0;
+  virtual void setRfPinInterrupt(bool enabled) = 0;
+  virtual void dataReceived(unsigned char *data, int len) = 0;
+
+  void mark()
   {
-    setTimer(0);
-    enableRfPinInterrupt(true);
+    target::GPIOA.ODR.setODR(1, 1);
+    for (volatile int c = 0; c < 50; c++)
+      ;
+    target::GPIOA.ODR.setODR(1, 0);
   }
 
-  void receive()
+  void onEvent()
   {
-    bitCounter = -1;
-    enableRfPinInterrupt(false);
-    setTimer(bitTime / 8);
+    dataReceived(&buffer[1], buffer[0]);
   }
-
-  virtual void setTimer(int time) = 0;
-  virtual void enableRfPinInterrupt(bool enabled) = 0;
 
 public:
-  void init()
+  void init(unsigned short address)
   {
-    listen();
+    this->address = address;
     target::GPIOA.MODER.setMODER(1, 1);
+    rxEventId = applicationEvents::createEventId();
+    handle(rxEventId);
+  }
+
+  void listen()
+  {
+    setTimerInterrupt(0);
+    setRfPinInterrupt(true);
   }
 
   void handleTimerInterrupt(bool val)
@@ -43,68 +55,91 @@ public:
 
     if (bitCounter < 0)
     {
-      setTimer(bitTime);
+      setTimerInterrupt(bitTime);
+      bitCounter++;
     }
     else
     {
 
-      target::GPIOA.ODR.setODR(1, 1);
-      for (volatile int c = 0; c < 50; c++)
-        ;
-      target::GPIOA.ODR.setODR(1, 0);
+      //mark();
 
-      volatile int byteIdx = bitCounter >> 3;
-      volatile int bitIdx = bitCounter & 0x07;
-      if (bitIdx == 0)
-      {
-        buffer[byteIdx] = 0;
-      }
-      buffer[byteIdx] |= val << bitIdx;
-      if (byteIdx == 10)
-      {
-        volatile int x = 1;
-        x++;
+      int byteIdx = bitCounter >> 3;
+      int bitIdx = bitCounter & 0x07;      
+
+      if (
+         (byteIdx == 1 && buffer[0] != (address & 0xFF)) || 
+         (byteIdx == 2 && buffer[1] != (address >> 8))
+         ) {
         listen();
+      } else {
+        if (byteIdx > 2 && byteIdx == 2 + 1 + buffer[2] + 2)
+        {
+          int calculatedCrc = 0x55;
+          int len = buffer[2];
+          for (int c = 0; c < len; c++)
+          {
+            calculatedCrc += buffer[c + 2 + 1];
+          }
+          int bufferCrc = buffer[2 + 1 + len] | buffer[2 + 1 + len + 1] << 8;
+          if (bufferCrc == calculatedCrc)
+          {
+            applicationEvents::schedule(rxEventId);
+            setTimerInterrupt(0);
+          } else {     
+            listen();
+          }
+        }
+        else
+        {
+          if (bitIdx == 0)
+          {
+            buffer[byteIdx] = 0;
+          }
+          buffer[byteIdx] |= val << bitIdx;
+          bitCounter++;
+        }
       }
     }
+  }
 
-    bitCounter++;
+  void getTimes(int offset, int &min, int &max)
+  {
+    for (int c = 0; c<timeSamplesCount>> 1; c++)
+    {
+      int t = timeSamples[(timeSampleIdx - c - offset) & (timeSamplesCount - 1)];
+      if (t > max)
+      {
+        max = t;
+      }
+      if (t < min)
+      {
+        min = t;
+      }
+    }
   }
 
   void handleRfPinInterrupt(int time)
   {
-    timeSamples[timeSampleIdx++] = time;
+    timeSamples[timeSampleIdx] = time;
 
-    if (timeSampleIdx == timeSamplesCount)
-    {
-      timeSampleIdx = 0;
-    }
+    int fastMin = INT_MAX;
+    int fastMax = INT_MIN;
+    int slowMin = INT_MAX;
+    int slowMax = INT_MIN;
+    getTimes(-timeSamplesCount >> 1, fastMin, fastMax);
+    getTimes(0, slowMin, slowMax);
 
-    int sum = 0;
-    for (int c = 0; c < timeSamplesCount; c++)
+    if (
+        fastMax * 5 < slowMin * 4 &&
+        fastMin * 5 > slowMax * 2)
     {
-      sum += timeSamples[c];
-    }
-    int avg = sum / timeSamplesCount;
-    int maxDev = 0;
-    for (int c = 0; c < timeSamplesCount; c++)
-    {
-      int dev = timeSamples[c] - avg;
-      if (dev < 0)
-      {
-        dev = -dev;
-      }
-      if (dev > maxDev)
-      {
-        maxDev = dev;
-      }
+      bitTime = fastMin + fastMax >> 1;
+      bitCounter = -1;
+      setRfPinInterrupt(false);
+      setTimerInterrupt(11 * bitTime >> 4);
     }
 
-    if (maxDev < avg / 16)
-    {
-      bitTime = avg;
-      receive();
-    }
+    timeSampleIdx = (timeSampleIdx + 1) & (timeSamplesCount - 1);
   }
 };
 

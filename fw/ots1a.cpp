@@ -5,11 +5,11 @@ target::gpio_a::Peripheral *RF_PORT = &target::GPIOA;
 int RF_PIN = 0;
 
 
-class TxDriver: public ookey::tx::Driver {
+class TxDriver: public ookey::tx::Encoder {
     virtual void setRfPin(bool state) {
         RF_PORT->BSRR = (0x10000 | state) << RF_PIN;
     }
-    virtual void timerEnable(bool enabled) {
+    virtual void setTimerInterrupt(bool enabled) {
         target::TIM16.CR1.setCEN(enabled);
     }
 };
@@ -38,13 +38,13 @@ class TxTimer : public genericTimer::Timer
             //txDriver.send(NULL, 0);
         }
         ledOffTimer.start(10);
-        start(100);
+        start(10);
     }
 };
 
 void interruptHandlerTIM16()
 {
-    txDriver.tick();
+    txDriver.handleTimerInterrupt();
     target::TIM16.SR.setUIF(0);
 }
 
@@ -65,6 +65,6 @@ void initApplication()
     target::TIM16.ARR.setARR(4000);
     target::TIM16.PSC.setPSC(0);    
 
-    txDriver.init();
+    txDriver.init(0x1234);
     txTimer.onTimer();
 }

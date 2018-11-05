@@ -9,8 +9,8 @@ const int timeSamplesCount = 8;
 
 class Decoder : public applicationEvents::EventHandler
 {
-
-  unsigned char buffer[1 + 256 + 4];
+  unsigned short address;
+  unsigned char buffer[2 + 1 + 256 + 4];
   int bitTime;
   int bitCounter;
   int rxEventId;
@@ -32,13 +32,13 @@ class Decoder : public applicationEvents::EventHandler
 
   void onEvent()
   {
-    mark();
     dataReceived(&buffer[1], buffer[0]);
   }
 
 public:
-  void init()
+  void init(unsigned short address)
   {
+    this->address = address;
     target::GPIOA.MODER.setMODER(1, 1);
     rxEventId = applicationEvents::createEventId();
     handle(rxEventId);
@@ -60,15 +60,19 @@ public:
     }
     else
     {
-      mark();
 
-      volatile int byteIdx = bitCounter >> 3;
-      volatile int bitIdx = bitCounter & 0x07;      
+      //mark();
 
-      if ((byteIdx == 1 && buffer[0] != 0xDF) || (byteIdx == 2 && buffer[1] != 0x00)) {
+      int byteIdx = bitCounter >> 3;
+      int bitIdx = bitCounter & 0x07;      
+
+      if (
+         (byteIdx == 1 && buffer[0] != (address & 0xFF)) || 
+         (byteIdx == 2 && buffer[1] != (address >> 8))
+         ) {
         listen();
       } else {
-        if (byteIdx > 2 && byteIdx == 2 + buffer[2] + 4)
+        if (byteIdx > 2 && byteIdx == 2 + 1 + buffer[2] + 2)
         {
           int calculatedCrc = 0x55;
           int len = buffer[2];
@@ -81,7 +85,7 @@ public:
           {
             applicationEvents::schedule(rxEventId);
             setTimerInterrupt(0);
-          } else {
+          } else {     
             listen();
           }
         }
@@ -132,10 +136,9 @@ public:
       bitTime = fastMin + fastMax >> 1;
       bitCounter = -1;
       setRfPinInterrupt(false);
-      setTimerInterrupt(5 * bitTime >> 3);
+      setTimerInterrupt(11 * bitTime >> 4);
     }
 
-    volatile int x = fastMin + fastMax + slowMin + slowMax;
     timeSampleIdx = (timeSampleIdx + 1) & (timeSamplesCount - 1);
   }
 };

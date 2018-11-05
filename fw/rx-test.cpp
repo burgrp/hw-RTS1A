@@ -31,7 +31,14 @@ RxDecoder rxDecoder;
 
 void interruptHandlerTIM16()
 {
-    rxDecoder.handleTimerInterrupt(RF_PORT->IDR.getIDR(RF_PIN));
+    target::GPIOA.ODR.setODR(1, 1);
+    int b = RF_PORT->IDR.getIDR(RF_PIN);
+    for (volatile int c = 0; c < 50; c++)
+      ;
+
+    target::GPIOA.ODR.setODR(1, 0);
+
+    rxDecoder.handleTimerInterrupt(b);
     target::TIM16.SR.setUIF(0);
 }
 
@@ -66,6 +73,6 @@ void initApplication()
 
     target::NVIC.ISER.setSETENA(1 << target::interrupts::External::EXTI0_1);
 
-    rxDecoder.init();
+    rxDecoder.init(0x1234);    
     rxDecoder.listen();
 }
